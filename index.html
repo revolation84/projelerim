@@ -1,357 +1,93 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Veri Analiz Aracı</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .tabs { margin-bottom: 20px; }
-        .tab-button {
-            padding: 10px 15px;
-            margin-right: 10px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        .tab-button.active { background-color: #388E3C; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        textarea, input[type="file"] { width: 100%; margin-bottom: 10px; }
-        button { padding: 10px 15px; background-color: #4CAF50; color: white; border: none; cursor: pointer; margin-right: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; position: sticky; top: 0; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        .prediction-alert {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 10px;
-            margin-bottom: 10px;
-        }
-        .prediction-list {
-            background-color: #e2f3e5;
-            border: 1px solid #c3e6cb;
-            color: #155724;
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 10px;
-            margin-bottom: 10px;
-        }
-        .prediction-item {
-            margin-bottom: 5px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GitHub Excel'den Veri Çek</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f8f9fa;
+    }
+    h2 {
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      margin-right: 10px;
+      border: none;
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    table {
+      margin-top: 20px;
+      border-collapse: collapse;
+      width: 100%;
+      background: white;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #e9ecef;
+    }
+  </style>
 </head>
 <body>
-    <div class="tabs">
-        <button class="tab-button active" onclick="openTab('tab1')">Maç Verisi</button>
-        <button class="tab-button" onclick="openTab('tab2')">Kod Analizi</button>
-    </div>
 
-    <div id="tab1" class="tab-content active">
-        <h2>Maç Verisi</h2>
-        <textarea id="inputData" placeholder="Verileri buraya yapıştırın..."></textarea>
-        <div class="button-group">
-            <button onclick="convertToTable()">Çevir</button>
-            <button onclick="exportToExcel()">Excel'e Aktar</button>
-        </div>
-        <div id="predictionResults"></div>
-        <div class="table-container" id="tableContainer"></div>
-        <p id="matchCount" style="margin-top:10px; font-weight:bold;"></p>
-    </div>
+  <h2>GitHub Excel'den Veri Görüntüleme</h2>
 
-    <div id="tab2" class="tab-content">
-        <h2>Kod Analizi</h2>
-        <input type="file" id="fileInput" accept=".xlsx" />
-        <div class="button-group">
-            <button onclick="exportJSON()">JSON Dışa Aktar</button>
-            <button onclick="importJSON()">JSON'dan Al</button>
-            <button onclick="exportAnalysisToExcel()">Excel'e Aktar</button>
-        </div>
-        <table id="analysisTable">
-            <thead>
-                <tr>
-                    <th>Değer</th><th>Alt T.</th><th>Üst T.</th><th>Toplam</th><th>Alt Oranı</th><th>Üst Oranı</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-        <div id="explanation"></div>
-    </div>
+  <button onclick="loadExcelData()">Verileri Güncelle</button>
+  <button onclick="clearTable()">Verileri Temizle</button>
 
-    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
-    <script>
-    // Sekme geçişi
-    function openTab(tabId) {
-        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-        document.getElementById(tabId).classList.add('active');
-        event.target.classList.add('active');
-    }
+  <div id="excelTable"></div>
 
-    // MAÇ VERİSİ BÖLÜMÜ
-    let currentDate = '';
-    let tableData = [];
+  <script>
+    const fileUrl = "https://revolation84.github.io/projelerim/veriler-1.xlsx";
 
-    function convertToTable() {
-        const inputData = document.getElementById('inputData').value;
-        const tableContainer = document.getElementById('tableContainer');
-        const predictionResults = document.getElementById('predictionResults');
-        
-        // Önceki tahmin sonuçlarını temizle
-        predictionResults.innerHTML = '';
+    function loadExcelData() {
+      fetch(fileUrl + "?v=" + new Date().getTime()) // önbelleği kırmak için zaman ekliyoruz
+        .then(response => response.arrayBuffer())
+        .then(data => {
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-        const dateMatch = inputData.match(/(\d{2}\/\d{2}\/\d{4})/);
-        currentDate = dateMatch ? dateMatch[1] : '';
-
-        const lines = inputData.split('\n').filter(line => line.trim() !== '');
-
-        let tableHTML = '<table><thead><tr><th>Tarih</th><th>Saat</th><th>Lig</th><th>Ev Sahibi Takım</th><th>Skor</th><th>Deplasman Takım</th><th>İlk Yarı Skor</th><th>1</th><th>X</th><th>2</th><th>2.5 Alt</th><th>2.5 Üst</th><th>Kod</th></tr></thead><tbody>';
-
-        let currentRow = {};
-        let oddsIndex = 0;
-        const odds = [];
-        tableData = [];
-
-        for (const line of lines) {
-            if (line.match(/^(\d+\.\d{2}|-)$/)) {
-                odds.push(line.trim() === '-' ? '0' : line.trim());
-            }
-        }
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-
-            if (/^[A-ZÇĞİÖŞÜ]/i.test(line) && lines[i+1] && lines[i+1].match(/\d{2}:\d{2}/)) {
-                if (currentRow.time) {
-                    const row = createTableRowData(currentRow, odds, oddsIndex);
-                    tableHTML += row.html;
-                    tableData.push(row.data);
-                    oddsIndex += 5;
-                    currentRow = {};
-                }
-
-                const timeLine = lines[i+1].trim();
-                const timeMatch = timeLine.match(/(\d{2}:\d{2})/);
-                currentRow.time = timeMatch ? timeMatch[1] : '';
-                currentRow.league = line;
-
-                currentRow.homeTeam = lines[i+2]?.trim() || '';
-                const scoreLine = lines[i+3]?.trim() || '';
-                currentRow.awayTeam = lines[i+4]?.trim() || '';
-                const firstHalfLine = lines[i+5]?.trim() || '';
-
-                const scoreMatch = scoreLine.match(/(\d+)\s*-\s*(\d+)/);
-                const firstHalfMatch = firstHalfLine.match(/(\d+-\d+)/);
-
-                currentRow.score = scoreMatch ? scoreMatch[0] : '';
-                currentRow.firstHalf = firstHalfMatch ? firstHalfMatch[0] : '';
-            }
-        }
-
-        if (currentRow.time) {
-            const row = createTableRowData(currentRow, odds, oddsIndex);
-            tableHTML += row.html;
-            tableData.push(row.data);
-        }
-
-        tableHTML += '</tbody></table>';
-        tableContainer.innerHTML = tableHTML;
-        document.getElementById('matchCount').innerText = `${tableData.length} adet maç çevrildi.`;
-        
-        // Kod analizi verisini kontrol et ve tahminleri göster
-        checkPredictions();
-    }
-
-    function createTableRowData(rowData, odds, oddsIndex) {
-        const odds1 = odds[oddsIndex] || '0';
-        const oddsX = odds[oddsIndex+1] || '0';
-        const odds2 = odds[oddsIndex+2] || '0';
-
-        const kod = (getLastDigit(odds1) + getLastDigit(oddsX) + getLastDigit(odds2));
-
-        const data = {
-            date: currentDate,
-            time: rowData.time || '',
-            league: rowData.league || '',
-            homeTeam: rowData.homeTeam || '',
-            score: rowData.score || '',
-            awayTeam: rowData.awayTeam || '',
-            firstHalf: rowData.firstHalf || '',
-            odds1: odds1,
-            oddsX: oddsX,
-            odds2: odds2,
-            oddsUnder: odds[oddsIndex+3] || '0',
-            oddsOver: odds[oddsIndex+4] || '0',
-            kod: kod
-        };
-
-        const html = `
-            <tr>
-                <td>${data.date}</td><td>${data.time}</td><td>${data.league}</td><td>${data.homeTeam}</td>
-                <td>${data.score}</td><td>${data.awayTeam}</td><td>${data.firstHalf}</td>
-                <td>${data.odds1}</td><td>${data.oddsX}</td><td>${data.odds2}</td>
-                <td>${data.oddsUnder}</td><td>${data.oddsOver}</td><td>${data.kod}</td>
-            </tr>
-        `;
-
-        return { html, data };
-    }
-
-    function getLastDigit(value) {
-        const clean = parseFloat(value).toFixed(2).replace('.', '');
-        return clean.slice(-1);
-    }
-
-    function exportToExcel() {
-        if (tableData.length === 0) return alert('Önce verileri tabloya dönüştürün!');
-        const ws = XLSX.utils.json_to_sheet(tableData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Maçlar");
-        XLSX.writeFile(wb, currentDate.replace(/\//g, '.') + '.xlsx');
-    }
-
-    // KOD ANALİZİ BÖLÜMÜ
-    document.getElementById('fileInput').addEventListener('change', function (e) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const json = XLSX.utils.sheet_to_json(sheet);
-            
-            // Eğer veri varsa, mevcut veriyi temizle ve yenisini kaydet
-            localStorage.setItem('kod_analiz', JSON.stringify(json));
-            renderAnalysisTable(json);
-        };
-        reader.readAsArrayBuffer(e.target.files[0]);
-    });
-
-    function renderAnalysisTable(data) {
-        const tbody = document.querySelector('#analysisTable tbody');
-        const explanation = document.getElementById('explanation');
-        tbody.innerHTML = ''; explanation.innerHTML = '';
-        data.forEach((row, index) => {
-            const toplam = row["Alt T."] + row["Üst T."];
-            const altOran = (row["Alt T."] / toplam).toFixed(2);
-            const ustOran = (row["Üst T."] / toplam).toFixed(2);
-            const tr = `<tr><td>${row.Değer}</td><td>${row["Alt T."]}</td><td>${row["Üst T."]}</td><td>${toplam}</td><td>${altOran}</td><td>${ustOran}</td></tr>`;
-            tbody.innerHTML += tr;
-            if (index < 5) {
-                explanation.innerHTML += `<p><strong>${row.Değer}</strong>: Alt(${row["Alt T."]}) / Toplam(${toplam}) = ${altOran}, Üst(${row["Üst T."]}) / Toplam(${toplam}) = ${ustOran}</p>`;
-            }
-        });
-    }
-
-    function exportJSON() {
-        const data = localStorage.getItem('kod_analiz');
-        if (!data) return alert('Kayıtlı veri bulunamadı!');
-        const blob = new Blob([data], { type: 'application/json' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'analiz.json';
-        link.click();
-    }
-
-    function importJSON() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = e => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const json = JSON.parse(reader.result);
-                localStorage.setItem('kod_analiz', JSON.stringify(json));
-                renderAnalysisTable(json);
-            };
-            reader.readAsText(e.target.files[0]);
-        };
-        input.click();
-    }
-
-    function exportAnalysisToExcel() {
-        const data = JSON.parse(localStorage.getItem('kod_analiz') || '[]');
-        if (data.length === 0) return alert('LocalStorage boş!');
-        const output = data.map(row => {
-            const toplam = row["Alt T."] + row["Üst T."];
-            return {
-                "Değer": row.Değer,
-                "Alt T.": row["Alt T."],
-                "Üst T.": row["Üst T."],
-                "Toplam": toplam,
-                "Alt Oranı": (row["Alt T."] / toplam).toFixed(2),
-                "Üst Oranı": (row["Üst T."] / toplam).toFixed(2)
-            };
-        });
-        const ws = XLSX.utils.json_to_sheet(output);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Analiz");
-        XLSX.writeFile(wb, "Kod-Analiz.xlsx");
-    }
-
-    // YENİ EKLENEN FONKSİYON - KOD ANALİZİ VE TAHMİN KONTROL
-    function checkPredictions() {
-        const analysisData = JSON.parse(localStorage.getItem('kod_analiz') || '[]');
-        if (analysisData.length === 0) {
-            document.getElementById('predictionResults').innerHTML = '<div class="prediction-alert">Kod analizi verisi bulunamadı! Lütfen önce analiz verilerini yükleyin.</div>';
-            return;
-        }
-
-        const predictions = [];
-        
-        tableData.forEach(match => {
-            const kod = match.kod;
-            const kodAnalysis = analysisData.find(analysis => analysis.Değer === kod);
-            
-            if (kodAnalysis) {
-                const toplam = kodAnalysis["Alt T."] + kodAnalysis["Üst T."];
-                if (toplam > 0) {
-                    const altOran = kodAnalysis["Alt T."] / toplam;
-                    const ustOran = kodAnalysis["Üst T."] / toplam;
-                    
-                    // Her iki koşulu ayrı ayrı kontrol ediyoruz
-                    if (altOran >= 0.80) {
-                        predictions.push({
-                            time: match.time,
-                            match: `${match.homeTeam} - ${match.awayTeam}`,
-                            prediction: "Alt",
-                            probability: altOran.toFixed(2)
-                        });
-                    }
-                    
-                    if (ustOran >= 0.80) {
-                        predictions.push({
-                            time: match.time,
-                            match: `${match.homeTeam} - ${match.awayTeam}`,
-                            prediction: "Üst",
-                            probability: ustOran.toFixed(2)
-                        });
-                    }
-                }
-            }
-        });
-        
-        
-        // Sonuçları göster 
-        const predictionResults = document.getElementById('predictionResults');
-        if (predictions.length > 0) {
-            let html = '<div class="prediction-list"><h3>Yüksek Olasılıklı Tahminler:</h3>';
-            predictions.forEach(p => {
-                html += `<div class="prediction-item">⚽ <strong>${p.time}</strong> / <strong>${p.match}</strong> maçının <strong>${p.prediction}</strong> gelme olasılığı: <strong>${p.probability}</strong></div>`;
+          // HTML tabloyu oluştur
+          let tableHTML = "<table>";
+          jsonData.forEach((row, index) => {
+            tableHTML += "<tr>";
+            row.forEach(cell => {
+              tableHTML += `<${index === 0 ? "th" : "td"}>${cell}</${index === 0 ? "th" : "td"}>`;
             });
-            html += '</div>';
-            predictionResults.innerHTML = html;
-        } else {
-            predictionResults.innerHTML = '<div class="prediction-alert">0.80 ve üzeri olasılıklı tahmin bulunamadı.</div>';
-        }
+            tableHTML += "</tr>";
+          });
+          tableHTML += "</table>";
 
-
+          document.getElementById("excelTable").innerHTML = tableHTML;
+        })
+        .catch(err => {
+          console.error("Excel dosyası okunamadı:", err);
+          alert("Veri çekilirken bir hata oluştu.");
+        });
     }
-    </script>
+
+    function clearTable() {
+      document.getElementById("excelTable").innerHTML = "";
+    }
+
+    // Sayfa ilk açıldığında otomatik yükle
+    window.onload = loadExcelData;
+  </script>
+
 </body>
 </html>
