@@ -209,89 +209,148 @@
     }
 
     function exportToExcel() {
-        if (tableData.length === 0) return alert('Önce verileri tabloya dönüştürün.');
+        if (tableData.length === 0) return alert('Önce verileri tabloya dönüştürün!');
         const ws = XLSX.utils.json_to_sheet(tableData);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Maç Verisi');
-        XLSX.writeFile(wb, 'Mac_Veri.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, "Maçlar");
+        XLSX.writeFile(wb, currentDate.replace(/\//g, '.') + '.xlsx');
     }
 
     // KOD ANALİZİ BÖLÜMÜ
-    function checkPredictions() {
-        const predictionResults = document.getElementById('predictionResults');
-        let predictions = [];
+    document.getElementById('fileInput').addEventListener('change', function (e) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const json = XLSX.utils.sheet_to_json(sheet);
+            
+            // Eğer veri varsa, mevcut veriyi temizle ve yenisini kaydet
+            localStorage.setItem('kod_analiz', JSON.stringify(json));
+            renderAnalysisTable(json);
+        };
+        reader.readAsArrayBuffer(e.target.files[0]);
+    });
 
-        tableData.forEach(row => {
-            if (parseFloat(row.odds1) < 1.9 && parseFloat(row.odds2) < 1.9) {
-                predictions.push(`Maç: ${row.homeTeam} vs ${row.awayTeam}, Kod: ${row.kod}`);
+    function renderAnalysisTable(data) {
+        const tbody = document.querySelector('#analysisTable tbody');
+        const explanation = document.getElementById('explanation');
+        tbody.innerHTML = ''; explanation.innerHTML = '';
+        data.forEach((row, index) => {
+            const toplam = row["Alt T."] + row["Üst T."];
+            const altOran = (row["Alt T."] / toplam).toFixed(2);
+            const ustOran = (row["Üst T."] / toplam).toFixed(2);
+            const tr = `<tr><td>${row.Değer}</td><td>${row["Alt T."]}</td><td>${row["Üst T."]}</td><td>${toplam}</td><td>${altOran}</td><td>${ustOran}</td></tr>`;
+            tbody.innerHTML += tr;
+            if (index < 5) {
+                explanation.innerHTML += `<p><strong>${row.Değer}</strong>: Alt(${row["Alt T."]}) / Toplam(${toplam}) = ${altOran}, Üst(${row["Üst T."]}) / Toplam(${toplam}) = ${ustOran}</p>`;
             }
         });
-
-        if (predictions.length > 0) {
-            predictionResults.innerHTML = `
-                <div class="prediction-list">
-                    ${predictions.map(item => `<div class="prediction-item">${item}</div>`).join('')}
-                </div>
-            `;
-        } else {
-            predictionResults.innerHTML = `
-                <div class="prediction-alert">
-                    Bu maçlar için tahmin yapılmadı.
-                </div>
-            `;
-        }
     }
 
-    // JSON dışa aktarma
     function exportJSON() {
-        const json = JSON.stringify(tableData);
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'mac_verisi.json';
-        a.click();
-        URL.revokeObjectURL(url);
+        const data = localStorage.getItem('kod_analiz');
+        if (!data) return alert('Kayıtlı veri bulunamadı!');
+        const blob = new Blob([data], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'analiz.json';
+        link.click();
     }
 
-    // JSON içeri aktarma
     function importJSON() {
-        const fileInput = document.getElementById('fileInput');
-        const file = fileInput.files[0];
-        const reader = new FileReader();
-
-        reader.onload = function(event) {
-            const data = JSON.parse(event.target.result);
-            tableData = data;
-            displayAnalysis(data);
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = e => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const json = JSON.parse(reader.result);
+                localStorage.setItem('kod_analiz', JSON.stringify(json));
+                renderAnalysisTable(json);
+            };
+            reader.readAsText(e.target.files[0]);
         };
-
-        if (file) {
-            reader.readAsText(file);
-        }
+        input.click();
     }
 
     function exportAnalysisToExcel() {
-        const ws = XLSX.utils.json_to_sheet(tableData);
+        const data = JSON.parse(localStorage.getItem('kod_analiz') || '[]');
+        if (data.length === 0) return alert('LocalStorage boş!');
+        const output = data.map(row => {
+            const toplam = row["Alt T."] + row["Üst T."];
+            return {
+                "Değer": row.Değer,
+                "Alt T.": row["Alt T."],
+                "Üst T.": row["Üst T."],
+                "Toplam": toplam,
+                "Alt Oranı": (row["Alt T."] / toplam).toFixed(2),
+                "Üst Oranı": (row["Üst T."] / toplam).toFixed(2)
+            };
+        });
+        const ws = XLSX.utils.json_to_sheet(output);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Analiz Verisi');
-        XLSX.writeFile(wb, 'Analiz_Veri.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, "Analiz");
+        XLSX.writeFile(wb, "Kod-Analiz.xlsx");
     }
 
-    function displayAnalysis(data) {
-        const tableBody = document.querySelector('#analysisTable tbody');
-        tableBody.innerHTML = '';
+    // YENİ EKLENEN FONKSİYON - KOD ANALİZİ VE TAHMİN KONTROL
+    function checkPredictions() {
+        const analysisData = JSON.parse(localStorage.getItem('kod_analiz') || '[]');
+        if (analysisData.length === 0) {
+            document.getElementById('predictionResults').innerHTML = '<div class="prediction-alert">Kod analizi verisi bulunamadı! Lütfen önce analiz verilerini yükleyin.</div>';
+            return;
+        }
 
-        data.forEach(row => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${row.date}</td><td>${row.oddsUnder}</td><td>${row.oddsOver}</td>
-                <td>${(parseFloat(row.oddsUnder) + parseFloat(row.oddsOver)).toFixed(2)}</td>
-                <td>${(parseFloat(row.oddsUnder) / (parseFloat(row.oddsUnder) + parseFloat(row.oddsOver))).toFixed(2)}</td>
-                <td>${(parseFloat(row.oddsOver) / (parseFloat(row.oddsUnder) + parseFloat(row.oddsOver))).toFixed(2)}</td>
-            `;
-            tableBody.appendChild(tr);
+        const predictions = [];
+        
+        tableData.forEach(match => {
+            const kod = match.kod;
+            const kodAnalysis = analysisData.find(analysis => analysis.Değer === kod);
+            
+            if (kodAnalysis) {
+                const toplam = kodAnalysis["Alt T."] + kodAnalysis["Üst T."];
+                if (toplam > 0) {
+                    const altOran = kodAnalysis["Alt T."] / toplam;
+                    const ustOran = kodAnalysis["Üst T."] / toplam;
+                    
+                    // Her iki koşulu ayrı ayrı kontrol ediyoruz
+                    if (altOran >= 0.80) {
+                        predictions.push({
+                            time: match.time,
+                            match: `${match.homeTeam} - ${match.awayTeam}`,
+                            prediction: "Alt",
+                            probability: altOran.toFixed(2)
+                        });
+                    }
+                    
+                    if (ustOran >= 0.80) {
+                        predictions.push({
+                            time: match.time,
+                            match: `${match.homeTeam} - ${match.awayTeam}`,
+                            prediction: "Üst",
+                            probability: ustOran.toFixed(2)
+                        });
+                    }
+                }
+            }
         });
+        
+        
+        // Sonuçları göster 
+        const predictionResults = document.getElementById('predictionResults');
+        if (predictions.length > 0) {
+            let html = '<div class="prediction-list"><h3>Yüksek Olasılıklı Tahminler:</h3>';
+            predictions.forEach(p => {
+                html += `<div class="prediction-item">⚽ <strong>${p.time}</strong> / <strong>${p.match}</strong> maçının <strong>${p.prediction}</strong> gelme olasılığı: <strong>${p.probability}</strong></div>`;
+            });
+            html += '</div>';
+            predictionResults.innerHTML = html;
+        } else {
+            predictionResults.innerHTML = '<div class="prediction-alert">0.80 ve üzeri olasılıklı tahmin bulunamadı.</div>';
+        }
+
+
     }
     </script>
 </body>
